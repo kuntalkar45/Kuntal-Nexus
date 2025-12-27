@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuntal Nexus | Fixed Admin Dashboard</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        :root { --primary: #6366f1; --accent: #10b981; --danger: #f43f5e; --bg: #030712; --glass: rgba(17, 24, 39, 0.7); }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background: radial-gradient(circle at top left, #1e1b4b, #030712); color: #f8fafc; min-height: 100vh; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        header { text-align: center; padding: 40px 0; }
+        header img { width: 90px; border-radius: 50%; border: 3px solid var(--primary); padding: 3px; margin-bottom: 15px; }
+        .glass-panel { background: var(--glass); backdrop-filter: blur(15px); padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 30px; }
+        input { width: 100%; padding: 14px; margin: 10px 0; border-radius: 12px; border: 1px solid #334155; background: #0f172a; color: white; outline: none; }
+        .btn { padding: 12px 20px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-primary { background: var(--primary); color: white; width: 100%; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab { flex: 1; padding: 12px; background: #1f2937; text-align: center; cursor: pointer; border-radius: 12px; }
+        .tab.active { background: var(--primary); color: white; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: var(--glass); padding: 20px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; }
+        .card:hover { border-color: var(--primary); transform: translateY(-5px); }
+        .card-top { display: flex; align-items: center; gap: 15px; }
+        .card-top img { width: 45px; height: 45px; border-radius: 10px; background: #fff; }
+        .card-actions { display: flex; gap: 10px; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
+        .action-btn { flex: 1; text-align: center; font-size: 13px; font-weight: 600; cursor: pointer; color: #cbd5e1; text-decoration: none; }
+        .hidden { display: none !important; }
+        #loginTrigger { position: fixed; bottom: 20px; right: 20px; opacity: 0.5; cursor: pointer; background: #1f2937; padding: 10px 15px; border-radius: 10px; }
+        #authModal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index: 1000; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <img src="https://avatars.githubusercontent.com/u/207206439?v=4" alt="Profile">
+        <h1>Kuntal Nexus</h1>
+        <p id="adminBadge" style="color: var(--accent); font-size: 14px;" class="hidden">● Admin Logged In</p>
+    </header>
+
+    <div id="addPanel" class="glass-panel hidden">
+        <h3>Add New Asset</h3>
+        <input type="text" id="itemName" placeholder="Name">
+        <input type="url" id="itemUrl" placeholder="URL (https://...)">
+        <button class="btn btn-primary" onclick="saveData()">Save to Cloud</button>
+    </div>
+
+    <div class="tabs">
+        <div id="tabWeb" class="tab active" onclick="changeTab('web')">Websites</div>
+        <div id="tabApp" class="tab" onclick="changeTab('app')">Apps</div>
+    </div>
+
+    <div id="mainGrid" class="grid"></div>
+
+    <center><button id="logoutBtn" onclick="firebase.auth().signOut()" class="btn hidden" style="color:var(--danger); border:1px solid var(--danger); margin-top:50px;">Logout</button></center>
+</div>
+
+<div id="loginTrigger" onclick="toggleAuth(true)">🔑 Admin Login</div>
+
+<div id="authModal" class="hidden">
+    <div class="glass-panel" style="width: 320px;">
+        <h2>Admin Login</h2>
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="pass" placeholder="Password">
+        <button class="btn btn-primary" onclick="handleLogin()">Login</button>
+        <button class="btn" style="background:transparent; color:white; width:100%; margin-top:10px;" onclick="toggleAuth(false)">Cancel</button>
+    </div>
+</div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyBGzXyisXGDWgmUGD7LmUb8OOGmYvCW50s",
+    authDomain: "kuntal-hub.firebaseapp.com",
+    projectId: "kuntal-hub",
+    storageBucket: "kuntal-hub.firebasestorage.app",
+    messagingSenderId: "864709240480",
+    appId: "1:864709240480:web:bb9f69bfa1589288a30bc5"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let currentTab = 'web';
+let isAdmin = false;
+
+function toggleAuth(show) { document.getElementById('authModal').classList.toggle('hidden', !show); }
+
+async function handleLogin() {
+    const e = document.getElementById('email').value, p = document.getElementById('pass').value;
+    try { await auth.signInWithEmailAndPassword(e, p); toggleAuth(false); } catch(err) { alert(err.message); }
+}
+
+auth.onAuthStateChanged(user => {
+    isAdmin = !!user;
+    document.getElementById('addPanel').classList.toggle('hidden', !isAdmin);
+    document.getElementById('logoutBtn').classList.toggle('hidden', !isAdmin);
+    document.getElementById('adminBadge').classList.toggle('hidden', !isAdmin);
+    loadData();
+});
+
+function changeTab(t) {
+    currentTab = t;
+    document.getElementById('tabWeb').classList.toggle('active', t==='web');
+    document.getElementById('tabApp').classList.toggle('active', t==='app');
+    loadData();
+}
+
+async function saveData() {
+    const name = document.getElementById('itemName').value, url = document.getElementById('itemUrl').value;
+    if(!name || !url) return alert("Fill all fields");
+
+    try {
+        await db.collection("items").add({
+            name, url,
+            type: currentTab,
+            time: Date.now(),
+            uid: auth.currentUser.uid
+        });
+        alert("Saved successfully!");
+        document.getElementById('itemName').value = "";
+        document.getElementById('itemUrl').value = "";
+    } catch(e) { alert("Save failed: " + e.message); }
+}
+
+function loadData() {
+    db.collection("items").where("type", "==", currentTab).orderBy("time", "desc").onSnapshot(snap => {
+        const grid = document.getElementById('mainGrid');
+        grid.innerHTML = "";
+        snap.forEach(doc => {
+            const data = doc.data();
+            const favicon = `https://www.google.com/s2/favicons?domain=${data.url}&sz=64`;
+            grid.innerHTML += `
+                <div class="card">
+                    <div class="card-top">
+                        <img src="${favicon}" onerror="this.src='https://cdn-icons-png.flaticon.com/512/1243/1243933.png'">
+                        <div><h4>${data.name}</h4><p style="font-size:11px;color:#94a3b8">${data.url}</p></div>
+                    </div>
+                    <div class="card-actions">
+                        <a href="${data.url}" target="_blank" class="action-btn" style="color:var(--primary)">Open</a>
+                        ${isAdmin ? `<span class="action-btn" style="color:#fbbf24" onclick="editItem('${doc.id}','${data.name}','${data.url}')">Edit</span>
+                        <span class="action-btn" style="color:var(--danger)" onclick="deleteItem('${doc.id}')">Delete</span>` : ''}
+                    </div>
+                </div>`;
+        });
+    }, err => { console.error(err); });
+}
+
+async function editItem(id, n, u) {
+    const nn = prompt("New Name:", n), nu = prompt("New URL:", u);
+    if(nn && nu) await db.collection("items").doc(id).update({name:nn, url:nu});
+}
+
+async function deleteItem(id) {
+    if(confirm("Delete?")) await db.collection("items").doc(id).delete();
+}
+</script>
+</body>
+</html>
